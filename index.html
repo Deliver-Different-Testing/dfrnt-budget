@@ -242,6 +242,39 @@ function fyOf(idx) {
   const yr = d.getFullYear(), mo = d.getMonth() + 1;
   return mo >= 4 ? yr + 1 : yr;
 }
+function idxToMonthStr(idx) {
+  const [y, m] = state.startMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + idx, 1);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function monthStrToIdx(s) {
+  if (!s) return 0;
+  const [y, m] = s.split('-').map(Number);
+  const [sy, sm] = state.startMonth.split('-').map(Number);
+  return Math.max(0, (y - sy) * 12 + (m - sm));
+}
+function migrateOpexSchedule() {
+  for (const r of state.opex) {
+    if (!r.schedule || !Array.isArray(r.schedule) || !r.schedule.length) {
+      r.schedule = [{ fromIdx: 0, nzd: Number(r.nzd) || 0 }];
+    }
+    delete r.nzd;
+    r.schedule.sort((a, b) => a.fromIdx - b.fromIdx);
+    if (r.schedule[0].fromIdx !== 0) r.schedule[0].fromIdx = 0;
+  }
+}
+function opexAtMonth(row, idx) {
+  if (!row.schedule || !row.schedule.length) return 0;
+  let v = 0;
+  for (const e of row.schedule) {
+    if (e.fromIdx <= idx) v = Number(e.nzd) || 0;
+    else break;
+  }
+  return v;
+}
+function totalFixedNzdAt(idx) {
+  return state.opex.reduce((a, r) => a + opexAtMonth(r, idx), 0);
+}
 
 // ============== CALC ENGINE ==============
 function compute() {
@@ -281,7 +314,7 @@ function compute() {
     const totalRevUsd = subRev + setupRev + txRev + smsRev;
     const totalCogsUsd = awsCost + mapCost + smsCost;
     const grossUsd = totalRevUsd - totalCogsUsd;
-    const fixedNzd = state.opex.reduce((a, r) => a + (Number(r.nzd) || 0), 0);
+    const fixedNzd = totalFixedNzdAt(i);
     const fixedUsd = fixedNzd * state.fx;
     const salesCommUsd = totalRevUsd * (state.salesCommPct / 100);
     const opexUsd = fixedUsd + salesCommUsd;
@@ -364,37 +397,70 @@ function renderTierTable() {
 }
 
 function renderOpexTable() {
+  const head = document.querySelector('#opexTable thead');
+  head.innerHTML = '<tr><th>Line</th><th>From</th><th>NZD/mo</th><th></th></tr>';
   const tbody = document.querySelector('#opexTable tbody');
   tbody.innerHTML = '';
   state.opex.forEach((row, i) => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><input class="cell" style="width:160px;text-align:left" type="text" value="${row.name.replace(/"/g,'&quot;')}" data-i="${i}" data-k="name"></td>
-      <td><input class="cell cellwide num" type="number" step="100" value="${row.nzd}" data-i="${i}" data-k="nzd"></td>
-      <td><button class="btn danger" data-del="${i}" style="padding:2px 6px">×</button></td>
-    `;
-    tbody.appendChild(tr);
+    row.schedule.forEach((entry, j) => {
+      const tr = document.createElement('tr');
+      const isFirst = j === 0;
+      const isLastEntry = j === row.schedule.length - 1;
+      const nameCell = isFirst
+        ? `<input class="cell" style="width:160px;text-align:left" type="text" value="${(row.name||'').replace(/"/g,'&quot;')}" data-i="${i}" data-act="name">`
+        : `<span class="small" style="padding-left:14px;color:var(--muted)">↳ change</span>`;
+      const fromCell = isFirst
+        ? `<span class="small">${idxToMonthStr(0)} (start)</span>`
+        : `<input class="cell" style="width:120px" type="month" value="${idxToMonthStr(entry.fromIdx)}" data-i="${i}" data-j="${j}" data-act="from">`;
+      const nzdCell = `<input class="cell cellwide num" type="number" step="100" value="${entry.nzd}" data-i="${i}" data-j="${j}" data-act="nzd">`;
+      let action;
+      if (isFirst) {
+        action = `<button class="btn" data-i="${i}" data-act="add" style="padding:2px 6px" title="Add scheduled change">+ change</button>
+                  <button class="btn danger" data-i="${i}" data-act="del-line" style="padding:2px 6px" title="Delete line">×</button>`;
+      } else {
+        action = `<button class="btn danger" data-i="${i}" data-j="${j}" data-act="del-entry" style="padding:2px 6px" title="Delete this change">×</button>`;
+      }
+      tr.innerHTML = `<td>${nameCell}</td><td>${fromCell}</td><td>${nzdCell}</td><td>${action}</td>`;
+      tbody.appendChild(tr);
+    });
   });
-  // total row
-  const total = state.opex.reduce((a, r) => a + (Number(r.nzd) || 0), 0);
+  // Total row — show current first-month total
+  const total = totalFixedNzdAt(0);
   const tr = document.createElement('tr');
   tr.className = 'row-emph';
-  tr.innerHTML = `<td>Total Fixed Opex / mo</td><td class="num">${fmt(total)}</td><td></td>`;
+  tr.innerHTML = `<td>Total Fixed Opex / mo (start)</td><td></td><td class="num">${fmt(total)}</td><td></td>`;
   tbody.appendChild(tr);
 
   tbody.querySelectorAll('input').forEach(inp => inp.addEventListener('input', e => {
-    const i = +e.target.dataset.i, k = e.target.dataset.k;
-    state.opex[i][k] = k === 'nzd' ? (Number(e.target.value) || 0) : e.target.value;
+    const i = +e.target.dataset.i, j = e.target.dataset.j != null ? +e.target.dataset.j : null, act = e.target.dataset.act;
+    if (act === 'name') state.opex[i].name = e.target.value;
+    else if (act === 'nzd') state.opex[i].schedule[j].nzd = Number(e.target.value) || 0;
+    else if (act === 'from') {
+      state.opex[i].schedule[j].fromIdx = monthStrToIdx(e.target.value);
+      state.opex[i].schedule.sort((a, b) => a.fromIdx - b.fromIdx);
+      if (state.opex[i].schedule[0].fromIdx !== 0) state.opex[i].schedule[0].fromIdx = 0;
+    }
     saveState(); rerender();
   }));
-  tbody.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', e => {
-    state.opex.splice(+e.target.dataset.del, 1);
+  tbody.querySelectorAll('button[data-act]').forEach(btn => btn.addEventListener('click', e => {
+    const i = +e.target.dataset.i, act = e.target.dataset.act;
+    if (act === 'add') {
+      const last = state.opex[i].schedule[state.opex[i].schedule.length - 1];
+      const nextIdx = Math.min(state.months - 1, (last.fromIdx || 0) + 1);
+      state.opex[i].schedule.push({ fromIdx: nextIdx, nzd: last.nzd });
+      state.opex[i].schedule.sort((a, b) => a.fromIdx - b.fromIdx);
+    } else if (act === 'del-entry') {
+      const j = +e.target.dataset.j;
+      state.opex[i].schedule.splice(j, 1);
+    } else if (act === 'del-line') {
+      state.opex.splice(i, 1);
+    }
     saveState(); rerender();
   }));
 }
 
 function addOpexRow() {
-  state.opex.push({ name: 'New line', nzd: 0 });
+  state.opex.push({ name: 'New line', schedule: [{ fromIdx: 0, nzd: 0 }] });
   saveState(); rerender();
 }
 
@@ -459,10 +525,10 @@ function renderPnL(c) {
     { label: 'COGS (variable)',    get: m => m.totalCogsUsd,   kind: 'flow' },
     { label: 'Gross Profit',       get: m => m.grossUsd,       kind: 'flow', emph: true, color: true }
   ];
-  // Opex breakdown — each opex line as its own row, monthly NZD constant
+  // Opex breakdown — each opex line as its own row, value looked up per month from schedule
   state.opex.forEach(r => rows.push({
     label: '— ' + (r.name || ''),
-    get: () => (Number(r.nzd) || 0) * state.fx,
+    get: m => opexAtMonth(r, m.idx) * state.fx,
     kind: 'flow'
   }));
   rows.push({ label: 'Total Fixed Opex', get: m => m.fixedUsd,     kind: 'flow', emph: true });
@@ -664,10 +730,11 @@ function loadScenario(name) {
   const s = loadScenarios().find(x => x.name === name);
   if (!s) return;
   state = JSON.parse(JSON.stringify(s.state));
+  migrateOpexSchedule();
   saveState();
   bindTopCtrl();
+  renderTierTable();
   rerender();
-  renderTierTable(); renderOpexTable();
 }
 function deleteScenario(name) {
   const arr = loadScenarios().filter(s => s.name !== name);
@@ -761,6 +828,7 @@ function wireCtrl() {
 // ============== INIT ==============
 function rerender() {
   const c = compute();
+  renderOpexTable();
   renderPlanGrid();
   renderPnL(c);
   renderAnnual(c);
@@ -769,10 +837,10 @@ function rerender() {
 }
 
 loadState();
+migrateOpexSchedule();
 bindTopCtrl();
 wireCtrl();
 renderTierTable();
-renderOpexTable();
 rerender();
 </script>
 </body>
