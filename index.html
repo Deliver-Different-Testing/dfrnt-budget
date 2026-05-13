@@ -1,0 +1,755 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DFRNT TMS Budget Model</title>
+<style>
+  :root {
+    --bg:#0b0f14; --panel:#121821; --panel2:#1a212c; --line:#2a3340;
+    --text:#e7eef7; --muted:#8a96a8; --accent:#4ade80; --warn:#fbbf24; --bad:#f87171;
+    --silver:#94a3b8; --gold:#fbbf24; --platinum:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,-apple-system,'Segoe UI',sans-serif}
+  h1,h2,h3{margin:0 0 8px;font-weight:600}
+  h1{font-size:22px}
+  h2{font-size:16px;color:var(--text)}
+  h3{font-size:13px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted)}
+  header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--panel)}
+  header h1{flex:1;min-width:200px}
+  .topctrl{display:flex;gap:12px;align-items:center;font-size:13px;color:var(--muted);flex-wrap:wrap}
+  .topctrl label{display:flex;flex-direction:column;gap:2px}
+  .topctrl input,.topctrl select{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:4px 6px;font:inherit;width:90px}
+  main{padding:16px;display:flex;flex-direction:column;gap:16px;max-width:100%}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
+  section header{padding:0;background:none;border:none;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  section header h2{flex:1}
+  .toggle{cursor:pointer;color:var(--muted);font-size:12px;background:none;border:none}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+  th:first-child,td:first-child{text-align:left;color:var(--muted)}
+  th{font-weight:600;color:var(--muted);text-transform:uppercase;font-size:10.5px;letter-spacing:0.5px}
+  .grid-wrap{overflow-x:auto;max-width:100%}
+  .grid-wrap table{font-size:12px}
+  .grid-wrap th, .grid-wrap td{min-width:60px;padding:3px 4px}
+  input.cell{width:60px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:3px;padding:2px 4px;text-align:right;font:inherit}
+  input.cell:focus{outline:none;border-color:var(--accent)}
+  input.cellwide{width:90px}
+  .pos{color:var(--accent)}
+  .neg{color:var(--bad)}
+  .tier-silver{color:var(--silver)}
+  .tier-gold{color:var(--gold)}
+  .tier-platinum{color:var(--platinum)}
+  .tag{display:inline-block;padding:1px 6px;border-radius:3px;font-size:10.5px;background:var(--panel2);color:var(--muted)}
+  .scenarios{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .btn{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:5px 10px;font:inherit;cursor:pointer}
+  .btn:hover{border-color:var(--accent)}
+  .btn.primary{background:#0f2c1c;border-color:#1f3d2c}
+  .btn.danger{color:var(--bad)}
+  .scen-pill{padding:4px 8px;border:1px solid var(--line);border-radius:14px;background:var(--panel2);font-size:12px;display:flex;gap:6px;align-items:center}
+  .scen-pill .x{cursor:pointer;color:var(--muted)}
+  .row-emph{background:rgba(255,255,255,0.03);font-weight:600}
+  .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+  .stat{background:var(--panel2);border-radius:6px;padding:10px}
+  .stat .lbl{font-size:11px;text-transform:uppercase;color:var(--muted);letter-spacing:0.4px}
+  .stat .v{font-size:20px;margin-top:2px}
+  .stat .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .small{font-size:11px;color:var(--muted)}
+  .legend{font-size:11px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px}
+  canvas{max-width:100%;background:var(--panel2);border-radius:6px}
+  details summary{cursor:pointer;color:var(--muted);font-size:12px}
+  details[open] summary{margin-bottom:6px;color:var(--text)}
+  .yearsplit th{background:var(--panel2);position:sticky;top:0}
+  td.sticky, th.sticky{position:sticky;left:0;background:var(--panel);z-index:1}
+  .yearsplit{border-left:2px solid var(--line)}
+  .row-ribbon{display:flex;gap:6px;align-items:center}
+  .ribbon-label{flex:1}
+  .num{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 DFRNT TMS Budget Model</h1>
+  <div class="topctrl">
+    <label>FX (USD/NZD)<input id="fxRate" type="number" step="0.01" value="0.57"></label>
+    <label>Display<select id="displayCcy"><option value="NZD">NZD</option><option value="USD">USD</option></select></label>
+    <label>Sales comm %<input id="salesComm" type="number" step="0.5" value="0"></label>
+    <label>Months<select id="months"><option value="12">12</option><option value="24">24</option><option value="36" selected>36</option><option value="60">60</option></select></label>
+    <label>Start<input id="startMonth" type="month" value="2025-04"></label>
+  </div>
+</header>
+
+<main>
+
+<section>
+  <header><h2>Tier Pricing & Defaults <span class="tag">USD</span></h2></header>
+  <table id="tierTable">
+    <thead><tr><th>Tier</th><th>Monthly Sub</th><th>Setup Fee</th><th>$/Tx</th><th>Avg Tx/Mo</th><th>Texts/Tx</th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="small" style="margin-top:6px">All values in USD. Avg Tx/Mo drives variable cost and per-transaction revenue. Texts/Tx multiplies to text revenue at $0.03/text.</div>
+</section>
+
+<section>
+  <header><h2>Cost Assumptions</h2></header>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+    <div>
+      <h3>Variable (per transaction, USD)</h3>
+      <table>
+        <tr><td>AWS Hosting / tx</td><td><input class="cell cellwide num" id="costAws" type="number" step="0.001" value="0.022"></td></tr>
+        <tr><td>Mapping / tx</td><td><input class="cell cellwide num" id="costMap" type="number" step="0.0001" value="0.0015"></td></tr>
+        <tr><td>SMS / text</td><td><input class="cell cellwide num" id="costSms" type="number" step="0.001" value="0.007"></td></tr>
+        <tr><td>SMS price / text</td><td><input class="cell cellwide num" id="priceSms" type="number" step="0.001" value="0.030"></td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>Fixed monthly Opex (NZD)</h3>
+      <table id="opexTable">
+        <thead><tr><th>Line</th><th>NZD/mo</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <button class="btn" onclick="addOpexRow()" style="margin-top:6px">+ Add line</button>
+    </div>
+  </div>
+</section>
+
+<section>
+  <header>
+    <h2>Monthly Plan — New & Churned Clients per Tier</h2>
+    <div class="small">Type into any cell. Negative churn = paying clients leaving. New &amp; churn happen at month start.</div>
+  </header>
+  <div class="grid-wrap" id="planGridWrap"></div>
+</section>
+
+<section>
+  <header><h2>Outputs — Monthly P&L</h2><span class="small" id="ccyHint"></span></header>
+  <div class="grid-wrap" id="pnlWrap"></div>
+</section>
+
+<section>
+  <header><h2>Outputs — Annual Roll-up &amp; Key Stats</h2></header>
+  <div class="summary-grid" id="annualStats"></div>
+  <div style="margin-top:12px" id="annualTableWrap"></div>
+</section>
+
+<section>
+  <header><h2>Charts</h2></header>
+  <div class="legend" id="chartLegend"></div>
+  <canvas id="chartMain" width="1200" height="320"></canvas>
+</section>
+
+<section>
+  <header><h2>Scenarios</h2></header>
+  <div class="scenarios">
+    <input id="scenName" placeholder="Scenario name" style="background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:5px 8px;font:inherit;width:200px">
+    <button class="btn primary" onclick="saveScenario()">Save current</button>
+    <span class="small">Saved:</span>
+    <div id="scenList" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+  </div>
+  <div id="compareWrap" style="margin-top:12px"></div>
+</section>
+
+</main>
+
+<script>
+// ============== STATE & DEFAULTS ==============
+const TIERS = ['Silver', 'Gold', 'Platinum'];
+const TIER_COLOR = { Silver: '#94a3b8', Gold: '#fbbf24', Platinum: '#a78bfa' };
+
+// Defaults extracted from the Google Sheet (Pricing + Budget USD tabs)
+const DEFAULT_TIER_DATA = {
+  Silver:   { monthly_usd: 2631.58, setup_usd:  7500, tx_price_usd: 0.20,  avg_tx: 12500, texts_per_tx: 1.0 },
+  Gold:     { monthly_usd: 8771.93, setup_usd: 10000, tx_price_usd: 0.125, avg_tx: 60000, texts_per_tx: 1.0 },
+  Platinum: { monthly_usd:17543.86, setup_usd: 20000, tx_price_usd: 0.065, avg_tx:200000, texts_per_tx: 1.0 }
+};
+
+const DEFAULT_OPEX = [
+  { name: 'Wages — CE',           nzd: 17250 },
+  { name: 'Wages — Dev',          nzd: 56015 },
+  { name: 'Wages — Admin',        nzd: 16783 },
+  { name: 'Wages — Support',      nzd: 11696 },
+  { name: 'Marketing',            nzd: 10417 },
+  { name: 'Client Hospitality',   nzd:  2917 },
+  { name: 'Rent',                 nzd:  5000 },
+  { name: 'Insurance',            nzd:  1558 },
+  { name: 'IT Service & Support', nzd:  5000 },
+  { name: 'Accountancy',          nzd:  1000 },
+  { name: 'Legal',                nzd:  1000 },
+  { name: 'Bank Fees',            nzd:  3000 }
+];
+
+// FY26 default plan from the sheet (new clients per month per tier, Apr 2025 base)
+const DEFAULT_NEW = {
+  Silver:   [0,0,1,1,1,1,1,1,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  Gold:     [0,0,0,0,0,1,0,0,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  Platinum: [1,0,1,0,0,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+};
+
+let state = {
+  fx: 0.57,
+  displayCcy: 'NZD',
+  salesCommPct: 0,
+  months: 36,
+  startMonth: '2025-04',
+  tiers: JSON.parse(JSON.stringify(DEFAULT_TIER_DATA)),
+  opex: JSON.parse(JSON.stringify(DEFAULT_OPEX)),
+  variable: { aws: 0.022, map: 0.0015, sms: 0.007, smsPrice: 0.030 },
+  newC:   { Silver: [...DEFAULT_NEW.Silver],   Gold: [...DEFAULT_NEW.Gold],   Platinum: [...DEFAULT_NEW.Platinum] },
+  churnC: { Silver: new Array(60).fill(0),     Gold: new Array(60).fill(0),   Platinum: new Array(60).fill(0) }
+};
+
+const LS_KEY = 'dfrnt_budget_state_v1';
+const LS_SCEN = 'dfrnt_budget_scenarios_v1';
+
+function saveState() { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      state = Object.assign(state, s);
+      ['Silver','Gold','Platinum'].forEach(t => {
+        if (!state.newC[t])   state.newC[t]   = new Array(60).fill(0);
+        if (!state.churnC[t]) state.churnC[t] = new Array(60).fill(0);
+      });
+    }
+  } catch(e) { console.error('load failed', e); }
+}
+
+// ============== UTIL ==============
+function fmt(n, d = 0) {
+  if (!isFinite(n)) return '–';
+  const s = Math.abs(n) >= 1000 ? n.toLocaleString('en-NZ', { maximumFractionDigits: d, minimumFractionDigits: d })
+                                 : n.toFixed(d);
+  return n < 0 ? `(${s.replace('-', '')})` : s;
+}
+function fmtCcy(usd, d = 0) {
+  const v = state.displayCcy === 'NZD' ? usd / state.fx : usd;
+  return fmt(v, d);
+}
+function colorClass(n) { return n > 0 ? 'pos' : (n < 0 ? 'neg' : ''); }
+
+function monthLabel(idx) {
+  const [y, m] = state.startMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + idx, 1);
+  return d.toLocaleDateString('en-NZ', { month: 'short', year: '2-digit' });
+}
+function fyOf(idx) {
+  const [y, m] = state.startMonth.split('-').map(Number);
+  const d = new Date(y, m - 1 + idx, 1);
+  const yr = d.getFullYear(), mo = d.getMonth() + 1;
+  return mo >= 4 ? yr + 1 : yr;
+}
+
+// ============== CALC ENGINE ==============
+function compute() {
+  const M = state.months;
+  const out = { months: [], totals: { yearly: {} } };
+
+  // Active clients per tier per month (cumulative)
+  const active = { Silver: [], Gold: [], Platinum: [] };
+  for (const t of TIERS) {
+    let cur = 0;
+    for (let i = 0; i < M; i++) {
+      cur += (state.newC[t][i] || 0) - (state.churnC[t][i] || 0);
+      if (cur < 0) cur = 0;
+      active[t].push(cur);
+    }
+  }
+
+  for (let i = 0; i < M; i++) {
+    const m = { idx: i, label: monthLabel(i), fy: fyOf(i) };
+    let subRev = 0, setupRev = 0, txRev = 0, smsRev = 0, awsCost = 0, mapCost = 0, smsCost = 0;
+    let txTotal = 0, txByTier = {};
+
+    for (const t of TIERS) {
+      const tx = (state.tiers[t].avg_tx || 0) * active[t][i];
+      txByTier[t] = tx;
+      txTotal += tx;
+      subRev   += state.tiers[t].monthly_usd * active[t][i];
+      setupRev += state.tiers[t].setup_usd * (state.newC[t][i] || 0);
+      txRev    += state.tiers[t].tx_price_usd * tx;
+    }
+
+    smsRev   = txTotal * (state.tiers.Silver.texts_per_tx) * state.variable.smsPrice; // simplified: avg texts/tx ~ 1
+    awsCost  = txTotal * state.variable.aws;
+    mapCost  = txTotal * state.variable.map;
+    smsCost  = txTotal * state.variable.sms;
+
+    const totalRevUsd = subRev + setupRev + txRev + smsRev;
+    const totalCogsUsd = awsCost + mapCost + smsCost;
+    const grossUsd = totalRevUsd - totalCogsUsd;
+    const fixedNzd = state.opex.reduce((a, r) => a + (Number(r.nzd) || 0), 0);
+    const fixedUsd = fixedNzd * state.fx;
+    const salesCommUsd = totalRevUsd * (state.salesCommPct / 100);
+    const opexUsd = fixedUsd + salesCommUsd;
+    const npbtUsd = grossUsd - opexUsd;
+
+    Object.assign(m, {
+      activeSilver: active.Silver[i],
+      activeGold: active.Gold[i],
+      activePlatinum: active.Platinum[i],
+      activeTotal: active.Silver[i] + active.Gold[i] + active.Platinum[i],
+      txTotal, txByTier,
+      subRevUsd: subRev, setupRevUsd: setupRev, txRevUsd: txRev, smsRevUsd: smsRev,
+      totalRevUsd, totalCogsUsd, grossUsd,
+      fixedUsd, salesCommUsd, opexUsd, npbtUsd
+    });
+    out.months.push(m);
+  }
+
+  // Cumulative cash
+  let cum = 0;
+  out.months.forEach(m => { cum += m.npbtUsd; m.cumCashUsd = cum; });
+
+  // Yearly roll-up by fiscal year
+  const byFy = {};
+  for (const m of out.months) {
+    const fy = m.fy;
+    if (!byFy[fy]) byFy[fy] = { fy, revUsd:0, cogsUsd:0, grossUsd:0, opexUsd:0, npbtUsd:0,
+                                newSilver:0, newGold:0, newPlatinum:0,
+                                endSilver:0, endGold:0, endPlatinum:0,
+                                txTotal:0 };
+    byFy[fy].revUsd  += m.totalRevUsd;
+    byFy[fy].cogsUsd += m.totalCogsUsd;
+    byFy[fy].grossUsd += m.grossUsd;
+    byFy[fy].opexUsd += m.opexUsd;
+    byFy[fy].npbtUsd += m.npbtUsd;
+    byFy[fy].txTotal += m.txTotal;
+  }
+  // Add new clients per FY and end-of-FY active
+  for (let i = 0; i < out.months.length; i++) {
+    const fy = out.months[i].fy;
+    byFy[fy].newSilver   += state.newC.Silver[i]   || 0;
+    byFy[fy].newGold     += state.newC.Gold[i]     || 0;
+    byFy[fy].newPlatinum += state.newC.Platinum[i] || 0;
+  }
+  // end of fy = active in last month of that fy
+  for (const fy of Object.keys(byFy)) {
+    const last = out.months.filter(m => m.fy == fy).slice(-1)[0];
+    if (last) {
+      byFy[fy].endSilver   = last.activeSilver;
+      byFy[fy].endGold     = last.activeGold;
+      byFy[fy].endPlatinum = last.activePlatinum;
+    }
+  }
+  out.byFy = byFy;
+  return out;
+}
+
+// ============== RENDER ==============
+function renderTierTable() {
+  const tbody = document.querySelector('#tierTable tbody');
+  tbody.innerHTML = '';
+  for (const t of TIERS) {
+    const d = state.tiers[t];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="tier-${t.toLowerCase()}">● ${t}</td>
+      <td><input class="cell cellwide num" type="number" step="100" value="${d.monthly_usd}" data-tier="${t}" data-k="monthly_usd"></td>
+      <td><input class="cell cellwide num" type="number" step="500" value="${d.setup_usd}" data-tier="${t}" data-k="setup_usd"></td>
+      <td><input class="cell cellwide num" type="number" step="0.005" value="${d.tx_price_usd}" data-tier="${t}" data-k="tx_price_usd"></td>
+      <td><input class="cell cellwide num" type="number" step="500" value="${d.avg_tx}" data-tier="${t}" data-k="avg_tx"></td>
+      <td><input class="cell num" type="number" step="0.1" value="${d.texts_per_tx}" data-tier="${t}" data-k="texts_per_tx"></td>
+    `;
+    tbody.appendChild(tr);
+  }
+  tbody.querySelectorAll('input').forEach(inp => inp.addEventListener('input', e => {
+    const t = e.target.dataset.tier, k = e.target.dataset.k;
+    state.tiers[t][k] = Number(e.target.value) || 0;
+    saveState(); rerender();
+  }));
+}
+
+function renderOpexTable() {
+  const tbody = document.querySelector('#opexTable tbody');
+  tbody.innerHTML = '';
+  state.opex.forEach((row, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input class="cell" style="width:160px;text-align:left" type="text" value="${row.name.replace(/"/g,'&quot;')}" data-i="${i}" data-k="name"></td>
+      <td><input class="cell cellwide num" type="number" step="100" value="${row.nzd}" data-i="${i}" data-k="nzd"></td>
+      <td><button class="btn danger" data-del="${i}" style="padding:2px 6px">×</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+  // total row
+  const total = state.opex.reduce((a, r) => a + (Number(r.nzd) || 0), 0);
+  const tr = document.createElement('tr');
+  tr.className = 'row-emph';
+  tr.innerHTML = `<td>Total Fixed Opex / mo</td><td class="num">${fmt(total)}</td><td></td>`;
+  tbody.appendChild(tr);
+
+  tbody.querySelectorAll('input').forEach(inp => inp.addEventListener('input', e => {
+    const i = +e.target.dataset.i, k = e.target.dataset.k;
+    state.opex[i][k] = k === 'nzd' ? (Number(e.target.value) || 0) : e.target.value;
+    saveState(); rerender();
+  }));
+  tbody.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', e => {
+    state.opex.splice(+e.target.dataset.del, 1);
+    saveState(); rerender();
+  }));
+}
+
+function addOpexRow() {
+  state.opex.push({ name: 'New line', nzd: 0 });
+  saveState(); rerender();
+}
+
+function renderPlanGrid() {
+  const wrap = document.getElementById('planGridWrap');
+  const M = state.months;
+  let html = '<table><thead><tr><th class="sticky">Tier · Action</th>';
+  for (let i = 0; i < M; i++) html += `<th>${monthLabel(i)}</th>`;
+  html += '<th>Total</th></tr></thead><tbody>';
+
+  for (const t of TIERS) {
+    for (const k of ['newC','churnC']) {
+      const verb = k === 'newC' ? 'New' : 'Churn';
+      const arr = state[k][t];
+      let total = 0;
+      let row = `<tr><td class="sticky tier-${t.toLowerCase()}">${t} · <span class="small">${verb}</span></td>`;
+      for (let i = 0; i < M; i++) {
+        const v = arr[i] || 0;
+        total += v;
+        row += `<td><input class="cell num" type="number" step="1" min="0" value="${v}" data-mode="${k}" data-tier="${t}" data-i="${i}"></td>`;
+      }
+      row += `<td class="num">${total}</td></tr>`;
+      html += row;
+    }
+  }
+  // Active total row
+  const c = compute();
+  let activeRow = '<tr class="row-emph"><td class="sticky">Active Total</td>';
+  for (let i = 0; i < M; i++) activeRow += `<td class="num">${c.months[i].activeTotal}</td>`;
+  activeRow += `<td class="num">${c.months[M-1].activeTotal}</td></tr>`;
+  html += activeRow + '</tbody></table>';
+
+  wrap.innerHTML = html;
+  wrap.querySelectorAll('input.cell').forEach(inp => inp.addEventListener('input', e => {
+    const mode = e.target.dataset.mode, t = e.target.dataset.tier, i = +e.target.dataset.i;
+    state[mode][t][i] = Math.max(0, Number(e.target.value) || 0);
+    saveState(); rerender();
+  }));
+}
+
+function renderPnL(c) {
+  const wrap = document.getElementById('pnlWrap');
+  const M = state.months;
+  document.getElementById('ccyHint').textContent = '— values in ' + state.displayCcy;
+  let html = '<table><thead><tr><th class="sticky">Line</th>';
+  for (let i = 0; i < M; i++) html += `<th>${monthLabel(i)}</th>`;
+  html += '<th>Total</th></tr></thead><tbody>';
+
+  const rows = [
+    { label: 'Active clients',           f: m => m.activeTotal,                emph: false, plain: true },
+    { label: 'Transactions / mo',        f: m => m.txTotal,                    emph: false, plain: true },
+    { label: '— Subscription rev',       f: m => fmtCcy(m.subRevUsd) },
+    { label: '— Setup rev',              f: m => fmtCcy(m.setupRevUsd) },
+    { label: '— Per-Tx rev',             f: m => fmtCcy(m.txRevUsd) },
+    { label: '— Text rev',               f: m => fmtCcy(m.smsRevUsd) },
+    { label: 'Total Revenue',            f: m => fmtCcy(m.totalRevUsd),        emph: true, val: m => m.totalRevUsd },
+    { label: 'COGS (variable)',          f: m => fmtCcy(m.totalCogsUsd) },
+    { label: 'Gross Profit',             f: m => fmtCcy(m.grossUsd),           emph: true, val: m => m.grossUsd },
+    { label: 'Fixed Opex',               f: m => fmtCcy(m.fixedUsd) },
+    { label: 'Sales Commission',         f: m => fmtCcy(m.salesCommUsd) },
+    { label: 'NPBT',                     f: m => fmtCcy(m.npbtUsd),            emph: true, val: m => m.npbtUsd, color: true },
+    { label: 'Cumulative Cash',          f: m => fmtCcy(m.cumCashUsd),         emph: true, val: m => m.cumCashUsd, color: true }
+  ];
+
+  for (const row of rows) {
+    let tr = `<tr class="${row.emph ? 'row-emph' : ''}"><td class="sticky">${row.label}</td>`;
+    let total = 0;
+    for (let i = 0; i < M; i++) {
+      const m = c.months[i];
+      const txt = row.plain ? fmt(row.f(m)) : row.f(m);
+      const cls = row.color ? colorClass(row.val ? row.val(m) : 0) : '';
+      tr += `<td class="num ${cls}">${txt}</td>`;
+      if (row.val) total += row.val(m);
+      else if (row.plain) total = row.f(m); // plain rows show last value, not sum
+    }
+    if (row.label === 'Cumulative Cash') {
+      tr += `<td class="num ${colorClass(c.months[M-1].cumCashUsd)}">${fmtCcy(c.months[M-1].cumCashUsd)}</td>`;
+    } else if (row.val) {
+      tr += `<td class="num ${row.color ? colorClass(total) : ''}">${fmtCcy(total)}</td>`;
+    } else if (row.plain) {
+      tr += `<td class="num">${fmt(total)}</td>`;
+    } else {
+      // sum non-emph dollar rows
+      let s = 0;
+      for (const m of c.months) s += row.label.includes('Sub') ? m.subRevUsd
+        : row.label.includes('Setup') ? m.setupRevUsd
+        : row.label.includes('Per-Tx') ? m.txRevUsd
+        : row.label.includes('Text') ? m.smsRevUsd
+        : row.label.includes('COGS') ? m.totalCogsUsd
+        : row.label.includes('Fixed') ? m.fixedUsd
+        : row.label.includes('Sales') ? m.salesCommUsd : 0;
+      tr += `<td class="num">${fmtCcy(s)}</td>`;
+    }
+    tr += '</tr>';
+    html += tr;
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+function renderAnnual(c) {
+  const wrap = document.getElementById('annualTableWrap');
+  const fys = Object.keys(c.byFy).sort();
+  let html = '<table><thead><tr><th>FY</th><th>End Active</th><th>Silver</th><th>Gold</th><th>Plat</th><th>Tx</th><th>Revenue</th><th>COGS</th><th>Gross</th><th>Opex</th><th>NPBT</th></tr></thead><tbody>';
+  for (const fy of fys) {
+    const r = c.byFy[fy];
+    const endTot = r.endSilver + r.endGold + r.endPlatinum;
+    html += `<tr>
+      <td>FY${String(fy).slice(-2)}</td>
+      <td class="num">${endTot}</td>
+      <td class="num tier-silver">${r.endSilver}</td>
+      <td class="num tier-gold">${r.endGold}</td>
+      <td class="num tier-platinum">${r.endPlatinum}</td>
+      <td class="num">${fmt(r.txTotal)}</td>
+      <td class="num">${fmtCcy(r.revUsd)}</td>
+      <td class="num">${fmtCcy(r.cogsUsd)}</td>
+      <td class="num">${fmtCcy(r.grossUsd)}</td>
+      <td class="num">${fmtCcy(r.opexUsd)}</td>
+      <td class="num ${colorClass(r.npbtUsd)}">${fmtCcy(r.npbtUsd)}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+
+  // Top stats — over the whole modelled horizon
+  const totRev = c.months.reduce((a,m) => a + m.totalRevUsd, 0);
+  const totNpbt = c.months.reduce((a,m) => a + m.npbtUsd, 0);
+  const lastM = c.months[c.months.length - 1];
+  const peakLoss = Math.min(...c.months.map(m => m.cumCashUsd));
+  const breakEvenIdx = c.months.findIndex(m => m.npbtUsd > 0);
+  const cumPositiveIdx = c.months.findIndex(m => m.cumCashUsd > 0);
+
+  document.getElementById('annualStats').innerHTML = `
+    <div class="stat"><div class="lbl">End Active Clients</div><div class="v">${lastM.activeTotal}</div><div class="sub">${lastM.label}</div></div>
+    <div class="stat"><div class="lbl">Total Revenue (horizon)</div><div class="v">${fmtCcy(totRev)}</div><div class="sub">${state.displayCcy}</div></div>
+    <div class="stat"><div class="lbl">Total NPBT</div><div class="v ${colorClass(totNpbt)}">${fmtCcy(totNpbt)}</div><div class="sub">${state.displayCcy}</div></div>
+    <div class="stat"><div class="lbl">First profit month</div><div class="v">${breakEvenIdx >= 0 ? c.months[breakEvenIdx].label : '—'}</div><div class="sub">monthly NPBT &gt; 0</div></div>
+    <div class="stat"><div class="lbl">Cum cash positive</div><div class="v">${cumPositiveIdx >= 0 ? c.months[cumPositiveIdx].label : '—'}</div><div class="sub">running balance &gt; 0</div></div>
+    <div class="stat"><div class="lbl">Max funding need</div><div class="v ${colorClass(peakLoss)}">${fmtCcy(peakLoss)}</div><div class="sub">trough of cum cash</div></div>
+  `;
+}
+
+// ============== CHART ==============
+function drawChart(c) {
+  const cv = document.getElementById('chartMain');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  ctx.fillStyle = '#1a212c';
+  ctx.fillRect(0,0,W,H);
+  const padL = 70, padR = 40, padT = 20, padB = 40;
+  const pw = W - padL - padR, ph = H - padT - padB;
+
+  const M = c.months.length;
+  const rev = c.months.map(m => m.totalRevUsd / state.fx);
+  const npbt = c.months.map(m => m.npbtUsd / state.fx);
+  const cum = c.months.map(m => m.cumCashUsd / state.fx);
+  const allVals = [...rev, ...npbt, ...cum];
+  let yMax = Math.max(...allVals, 0);
+  let yMin = Math.min(...allVals, 0);
+  if (yMax === yMin) yMax = yMin + 1;
+  const yPad = (yMax - yMin) * 0.1;
+  yMax += yPad; yMin -= yPad;
+
+  ctx.strokeStyle = '#2a3340';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 0; i <= 5; i++) {
+    const y = padT + (ph * i / 5);
+    ctx.moveTo(padL, y); ctx.lineTo(W - padR, y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = '#8a96a8';
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 5; i++) {
+    const y = padT + (ph * i / 5);
+    const v = yMax - (yMax - yMin) * i / 5;
+    ctx.fillText(fmt(v, 0), padL - 6, y + 4);
+  }
+
+  // Zero line
+  if (yMin < 0 && yMax > 0) {
+    const zy = padT + ph * (yMax / (yMax - yMin));
+    ctx.strokeStyle = '#586173';
+    ctx.beginPath(); ctx.moveTo(padL, zy); ctx.lineTo(W - padR, zy); ctx.stroke();
+  }
+
+  // X labels — every 3 months
+  ctx.textAlign = 'center';
+  for (let i = 0; i < M; i += Math.max(1, Math.round(M/12))) {
+    const x = padL + (pw * i / Math.max(M-1, 1));
+    ctx.fillText(c.months[i].label, x, H - padB + 14);
+  }
+
+  function drawLine(arr, color, fill) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    arr.forEach((v, i) => {
+      const x = padL + (pw * i / Math.max(M-1, 1));
+      const y = padT + ph * (1 - (v - yMin) / (yMax - yMin));
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    if (fill) {
+      ctx.lineTo(padL + pw, padT + ph * (1 - (0 - yMin) / (yMax - yMin)));
+      ctx.lineTo(padL,        padT + ph * (1 - (0 - yMin) / (yMax - yMin)));
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+  }
+  drawLine(rev,  '#4ade80');
+  drawLine(npbt, '#fbbf24');
+  drawLine(cum,  '#a78bfa');
+
+  document.getElementById('chartLegend').innerHTML = `
+    <span><span style="color:#4ade80">●</span> Monthly Revenue</span>
+    <span><span style="color:#fbbf24">●</span> Monthly NPBT</span>
+    <span><span style="color:#a78bfa">●</span> Cumulative Cash</span>
+    <span class="small">— values in ${state.displayCcy}</span>
+  `;
+}
+
+// ============== SCENARIOS ==============
+function loadScenarios() {
+  try { return JSON.parse(localStorage.getItem(LS_SCEN) || '[]'); } catch { return []; }
+}
+function saveScenarios(arr) { localStorage.setItem(LS_SCEN, JSON.stringify(arr)); }
+
+function saveScenario() {
+  const name = document.getElementById('scenName').value.trim();
+  if (!name) { alert('Give the scenario a name'); return; }
+  const arr = loadScenarios();
+  const i = arr.findIndex(s => s.name === name);
+  const snap = { name, savedAt: new Date().toISOString(), state: JSON.parse(JSON.stringify(state)) };
+  if (i >= 0) arr[i] = snap; else arr.push(snap);
+  saveScenarios(arr);
+  document.getElementById('scenName').value = '';
+  rerender();
+}
+function loadScenario(name) {
+  const s = loadScenarios().find(x => x.name === name);
+  if (!s) return;
+  state = JSON.parse(JSON.stringify(s.state));
+  saveState();
+  bindTopCtrl();
+  rerender();
+  renderTierTable(); renderOpexTable();
+}
+function deleteScenario(name) {
+  const arr = loadScenarios().filter(s => s.name !== name);
+  saveScenarios(arr);
+  rerender();
+}
+
+function renderScenarios() {
+  const arr = loadScenarios();
+  const list = document.getElementById('scenList');
+  list.innerHTML = arr.length ? '' : '<span class="small">none yet</span>';
+  arr.forEach(s => {
+    const el = document.createElement('span');
+    el.className = 'scen-pill';
+    el.innerHTML = `<a href="#" style="color:var(--text);text-decoration:none">${s.name}</a> <span class="x" title="delete">×</span>`;
+    el.querySelector('a').addEventListener('click', e => { e.preventDefault(); loadScenario(s.name); });
+    el.querySelector('.x').addEventListener('click', () => { if (confirm(`Delete scenario "${s.name}"?`)) deleteScenario(s.name); });
+    list.appendChild(el);
+  });
+
+  // Comparison table
+  const cur = compute();
+  const cmp = document.getElementById('compareWrap');
+  if (!arr.length) { cmp.innerHTML = ''; return; }
+  let html = '<table><thead><tr><th>Scenario</th><th>End Active</th><th>Total Rev</th><th>Total NPBT</th><th>Max funding need</th><th>First profit</th></tr></thead><tbody>';
+  const stash = JSON.parse(JSON.stringify(state));
+  // current
+  html += rowFor('— Current —', cur);
+  for (const s of arr) {
+    state = JSON.parse(JSON.stringify(s.state));
+    const cc = compute();
+    html += rowFor(s.name, cc);
+  }
+  state = stash;
+  html += '</tbody></table>';
+  cmp.innerHTML = html;
+
+  function rowFor(name, c) {
+    const tot = c.months.length;
+    const lastM = c.months[tot - 1];
+    const totRev = c.months.reduce((a,m) => a + m.totalRevUsd, 0);
+    const totNpbt = c.months.reduce((a,m) => a + m.npbtUsd, 0);
+    const peakLoss = Math.min(...c.months.map(m => m.cumCashUsd));
+    const breakEven = c.months.findIndex(m => m.npbtUsd > 0);
+    return `<tr>
+      <td>${name}</td>
+      <td class="num">${lastM.activeTotal}</td>
+      <td class="num">${fmtCcy(totRev)}</td>
+      <td class="num ${colorClass(totNpbt)}">${fmtCcy(totNpbt)}</td>
+      <td class="num ${colorClass(peakLoss)}">${fmtCcy(peakLoss)}</td>
+      <td>${breakEven >= 0 ? c.months[breakEven].label : '—'}</td>
+    </tr>`;
+  }
+}
+
+// ============== TOP CONTROLS ==============
+function bindTopCtrl() {
+  document.getElementById('fxRate').value = state.fx;
+  document.getElementById('displayCcy').value = state.displayCcy;
+  document.getElementById('salesComm').value = state.salesCommPct;
+  document.getElementById('months').value = String(state.months);
+  document.getElementById('startMonth').value = state.startMonth;
+  document.getElementById('costAws').value = state.variable.aws;
+  document.getElementById('costMap').value = state.variable.map;
+  document.getElementById('costSms').value = state.variable.sms;
+  document.getElementById('priceSms').value = state.variable.smsPrice;
+}
+
+function wireCtrl() {
+  document.getElementById('fxRate').addEventListener('input', e => { state.fx = Number(e.target.value) || 0.57; saveState(); rerender(); });
+  document.getElementById('displayCcy').addEventListener('change', e => { state.displayCcy = e.target.value; saveState(); rerender(); });
+  document.getElementById('salesComm').addEventListener('input', e => { state.salesCommPct = Number(e.target.value) || 0; saveState(); rerender(); });
+  document.getElementById('months').addEventListener('change', e => {
+    state.months = Number(e.target.value) || 36;
+    for (const t of TIERS) {
+      while (state.newC[t].length   < state.months) state.newC[t].push(0);
+      while (state.churnC[t].length < state.months) state.churnC[t].push(0);
+    }
+    saveState(); renderPlanGrid(); rerender();
+  });
+  document.getElementById('startMonth').addEventListener('change', e => { state.startMonth = e.target.value; saveState(); rerender(); });
+  ['costAws','costMap','costSms','priceSms'].forEach(id => {
+    document.getElementById(id).addEventListener('input', e => {
+      const k = id === 'costAws' ? 'aws' : id === 'costMap' ? 'map' : id === 'costSms' ? 'sms' : 'smsPrice';
+      state.variable[k] = Number(e.target.value) || 0;
+      saveState(); rerender();
+    });
+  });
+}
+
+// ============== INIT ==============
+function rerender() {
+  const c = compute();
+  renderPlanGrid();
+  renderPnL(c);
+  renderAnnual(c);
+  drawChart(c);
+  renderScenarios();
+}
+
+loadState();
+bindTopCtrl();
+wireCtrl();
+renderTierTable();
+renderOpexTable();
+rerender();
+</script>
+</body>
+</html>
