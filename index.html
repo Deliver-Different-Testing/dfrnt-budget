@@ -734,6 +734,7 @@ function loadScenario(name) {
   saveState();
   bindTopCtrl();
   renderTierTable();
+  renderOpexTable();
   rerender();
 }
 function deleteScenario(name) {
@@ -815,7 +816,7 @@ function wireCtrl() {
     }
     saveState(); renderPlanGrid(); rerender();
   });
-  document.getElementById('startMonth').addEventListener('change', e => { state.startMonth = e.target.value; saveState(); rerender(); });
+  document.getElementById('startMonth').addEventListener('change', e => { state.startMonth = e.target.value; saveState(); renderOpexTable(); rerender(); });
   ['costAws','costMap','costSms','priceSms'].forEach(id => {
     document.getElementById(id).addEventListener('input', e => {
       const k = id === 'costAws' ? 'aws' : id === 'costMap' ? 'map' : id === 'costSms' ? 'sms' : 'smsPrice';
@@ -828,7 +829,10 @@ function wireCtrl() {
 // ============== INIT ==============
 function rerender() {
   const c = compute();
-  renderOpexTable();
+  // Update only the start-of-horizon Total Fixed Opex cell without rebuilding
+  // the opex table (rebuilding kills focus mid-typing).
+  const totCell = document.querySelector('#opexTable tbody tr.row-emph td.num');
+  if (totCell) totCell.textContent = fmt(totalFixedNzdAt(0));
   renderPlanGrid();
   renderPnL(c);
   renderAnnual(c);
@@ -841,6 +845,7 @@ migrateOpexSchedule();
 bindTopCtrl();
 wireCtrl();
 renderTierTable();
+renderOpexTable();
 rerender();
 </script>
 </body>
